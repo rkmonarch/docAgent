@@ -1,0 +1,284 @@
+research_task:
+  description: >
+    You have received the following project intake data:
+    {intake_json}
+
+    Your job:
+    1. Parse the intake. If a GitHub URL is provided, analyse the repository structure,
+       README, and key source files to extract: public APIs, data models, configuration
+       options, installation steps, and known limitations.
+    2. If code snippets or uploaded files are provided, perform the same extraction from
+       those sources.
+    3. Identify and list the top 5–10 "jobs-to-be-done" that developers will use this
+       project for, cross-referencing the use_cases field from intake.
+    4. Document all prerequisites (runtime versions, credentials, environment variables,
+       OS requirements).
+    5. List all public symbols (classes, functions, CLI commands) with their signatures.
+    6. Flag any ambiguities or missing information with severity (critical / warning).
+
+    Output a single JSON object called ResearchBrief with the schema:
+    {{
+      "project": {{ "name", "tagline", "description", "version", "type", "license" }},
+      "installation": {{ "one_liner", "full_steps": [], "prerequisites": [] }},
+      "public_api": [
+        {{ "name", "type", "signature", "description", "params": [], "returns", "raises": [] }}
+      ],
+      "data_models": [
+        {{ "name", "fields": [{{"name","type","required","default","description"}}] }}
+      ],
+      "use_cases": ["..."],
+      "architecture_notes": "...",
+      "ambiguities": [{{"field","severity","note"}}]
+    }}
+  expected_output: >
+    A valid JSON string containing the ResearchBrief object as specified above.
+    No prose before or after the JSON — just the raw JSON.
+  agent: researcher
+
+strategy_task:
+  description: >
+    Using the ResearchBrief from the previous task and the original intake:
+    {intake_json}
+
+    Design the complete documentation architecture:
+    1. Map each use_case to a How-to Guide (one guide per use case, with a descriptive
+       file name like how-to/accept-payments.md).
+    2. Design the Tutorial structure: intro + 3–7 chapters ending with a working project.
+    3. Design the Quickstart: single page, under 500 words, zero-to-hero in < 5 minutes.
+    4. Map each public API symbol to a Reference page (group by module/class if > 20 symbols).
+    5. List 3–5 Explanation topics covering architecture, key concepts, and design decisions.
+    6. If agent_friendly is true, add: docs/llms.txt, docs/llms-full.txt, docs/schemas/.
+    7. If mkdocs is true, add mkdocs.yml to the manifest.
+
+    Output an OutlineManifest JSON object:
+    {{
+      "nav_tree": {{ ... }},  // mirrors MkDocs nav structure
+      "files": [
+        {{
+          "path": "docs/quickstart.md",
+          "diataxis_type": "tutorial",
+          "title": "...",
+          "description": "...",
+          "outline": ["section heading 1", "section heading 2", ...]
+        }}
+      ],
+      "ftue_quickstart_path": "docs/quickstart.md",
+      "agent_files": ["docs/llms.txt", "docs/llms-full.txt"],
+      "schema_files": ["docs/schemas/ModelName.json"]
+    }}
+  expected_output: >
+    A valid JSON string containing the OutlineManifest object as specified above.
+  agent: strategist
+
+tutorial_task:
+  description: >
+    Write the Tutorial section based on the OutlineManifest and ResearchBrief.
+
+    Intake context: {intake_json}
+
+    Rules:
+    - Start with docs/quickstart.md — the MOST IMPORTANT page. It MUST:
+      * Have a hero sentence: "Get [project] running in 5 minutes."
+      * Installation: one copy-paste command block.
+      * First working example: ≤ 20 lines of code with actual expected output shown.
+      * A "What's next?" section with links to Tutorial, How-to Guides, Reference.
+    - Then write docs/tutorial/index.md (tutorial overview) and one chapter per
+      tutorial section in the OutlineManifest.
+    - Each tutorial chapter: has a clear learning goal, step-by-step prose + code,
+      a checkpoint ("You should see: ..."), and a summary of what was learned.
+    - Tone: {tone}
+    - Audience skill level: {skill_level}
+    - Code style: {code_style}
+    - Include diagram placeholders if include_diagrams is true.
+    - Include admonition boxes (> [!NOTE], > [!TIP], > [!WARNING]) if
+      include_admonitions is true.
+
+    Return a JSON object: {{ "path/to/file.md": "full markdown content", ... }}
+  expected_output: >
+    A JSON object mapping file paths to their complete Markdown content.
+    Keys: "docs/quickstart.md" and all tutorial chapter paths from the OutlineManifest.
+  agent: tutorial_writer
+
+howto_task:
+  description: >
+    Write all How-to Guides listed in the OutlineManifest.
+
+    Intake context: {intake_json}
+
+    For each How-to Guide:
+    - Title format: "How to [verb] [object]" (e.g. "How to handle webhooks")
+    - Structure:
+      1. Goal statement (one sentence)
+      2. Prerequisites (bulleted list)
+      3. Steps (numbered, each with code example)
+      4. Verification ("Run X — you should see Y")
+      5. Troubleshooting (2–3 common errors + fixes)
+      6. What you've accomplished + Next steps links
+    - Keep each guide under 800 words prose (excluding code blocks).
+    - Do NOT include conceptual explanations — only task-focused instructions.
+    - Tone: {tone}
+    - Code style: {code_style}
+
+    Return a JSON object: {{ "path/to/file.md": "full markdown content", ... }}
+  expected_output: >
+    A JSON object mapping how-to guide file paths to their complete Markdown content.
+  agent: howto_writer
+
+reference_task:
+  description: >
+    Write the complete API Reference documentation.
+
+    Intake context: {intake_json}
+
+    For every public API symbol in the ResearchBrief:
+    - Format: ## ClassName or ## function_name
+    - Include: description, signature code block, parameters table
+      (Name | Type | Required | Default | Description), return value, exceptions,
+      and at least one usage example.
+    - For data models: include a JSON Schema block AND a TypeScript interface block.
+    - Group symbols by module/namespace if more than 10 symbols.
+    - Cross-link related symbols using [ClassName](./reference/classname.md).
+    - Tone: formal / reference (ignore intake tone for this section).
+
+    Also produce: docs/schemas/{ModelName}.json for each data model (valid JSON Schema).
+    And: docs/types.d.ts with TypeScript type definitions for the entire public API.
+
+    Return a JSON object: {{ "path/to/file.md": "full markdown content", ... }}
+    Include .json and .d.ts files in the same object.
+  expected_output: >
+    A JSON object mapping reference file paths (md, json, d.ts) to their complete content.
+  agent: reference_writer
+
+explanation_task:
+  description: >
+    Write the Explanation / Concepts section.
+
+    Intake context: {intake_json}
+
+    For each explanation topic in the OutlineManifest:
+    - Structure: concept name → motivation → mental model → how it works internally →
+      trade-offs and alternatives considered → further reading links.
+    - Include Mermaid diagram blocks (```mermaid) for architecture and data flow.
+    - Do NOT give step-by-step instructions — this is understanding, not doing.
+    - Target: developers who have completed the Tutorial and want to go deeper.
+    - Tone: {tone}
+
+    At minimum cover:
+    1. Core architecture and component map
+    2. Key abstractions and their relationships
+    3. Design decisions and trade-offs
+
+    Return a JSON object: {{ "path/to/file.md": "full markdown content", ... }}
+  expected_output: >
+    A JSON object mapping explanation file paths to their complete Markdown content.
+  agent: explanation_writer
+
+agent_optimization_task:
+  description: >
+    Generate all agent-friendly artefacts for the documentation set.
+
+    You have access to all content produced by the writer agents.
+    Intake context: {intake_json}
+
+    Tasks:
+    1. Generate docs/llms.txt following the llms.txt specification:
+       - # Project Title
+       - ## Project Summary (2–3 sentences)
+       - ## Capabilities (bulleted list)
+       - ## Documentation Map (file tree with one-line descriptions)
+       - ## Key Concepts (5–10 terms with definitions)
+       - ## I/O Contracts (for each major API call: input schema, output schema)
+       - ## Usage Examples (3–5 canonical snippets)
+       - ## Glossary
+
+    2. Generate docs/llms-full.txt: concatenate ALL documentation into one file,
+       with clear ### FILE: path/to/file.md separators, for bulk ingestion.
+
+    3. Add YAML frontmatter to every Markdown file that lacks it:
+       ---
+       title: "..."
+       description: "..."
+       diataxis: tutorial|howto|reference|explanation
+       tags: [...]
+       llm_context: "One sentence summary for AI retrieval"
+       ---
+
+    4. Validate that every public API in the ResearchBrief has a JSON Schema in docs/schemas/.
+       Create any missing schemas.
+
+    5. Verify docs/types.d.ts is complete and export all types.
+
+    Return a JSON object: {{ "path/to/file": "content", ... }} for ALL new/modified files.
+  expected_output: >
+    A JSON object mapping file paths to their complete content (all new and modified files
+    produced by this task).
+  agent: agent_optimizer
+
+review_task:
+  description: >
+    Perform a complete quality review of the documentation set.
+
+    Intake context: {intake_json}
+
+    Human-quality checklist:
+    □ Diátaxis separation: no How-to content in Explanation, no concepts in Tutorial, etc.
+    □ Quickstart works end-to-end (mental walkthrough).
+    □ All code blocks have correct language tags.
+    □ No broken internal cross-references.
+    □ Terminology consistent with intake (project name, version, tech stack).
+    □ Tone consistent across sections (matches intake preference: {tone}).
+    □ Every How-to Guide has a Prerequisites section.
+    □ Every Reference entry has at least one code example.
+
+    Agent-quality checklist:
+    □ docs/llms.txt exists and has all required sections.
+    □ Every .md file has YAML frontmatter with llm_context field.
+    □ Every data model has a JSON Schema in docs/schemas/.
+    □ docs/types.d.ts exports all public types.
+    □ No orphan pages (all files in OutlineManifest are present in output).
+
+    For each failed check, output:
+    {{ "check": "...", "severity": "critical|warning|suggestion", "file": "...", "detail": "..." }}
+
+    Output a QAReport JSON:
+    {{
+      "passed": [...],
+      "issues": [...],
+      "overall": "approved|approved_with_warnings|rejected",
+      "summary": "..."
+    }}
+  expected_output: >
+    A valid JSON string containing the QAReport object.
+  agent: reviewer
+
+assembly_task:
+  description: >
+    Assemble the final documentation package.
+
+    Intake context: {intake_json}
+
+    1. Merge all file dicts produced by tutorial_task, howto_task, reference_task,
+       explanation_task, and agent_optimization_task into one master file dict.
+    2. Apply any fixes flagged as "critical" in the QAReport.
+    3. If mkdocs is true in intake, generate mkdocs.yml:
+       - site_name: "{project_name} Documentation"
+       - theme: material (with palette, features, plugins)
+       - nav: mirror the OutlineManifest nav_tree exactly
+    4. Generate manifest.json:
+       {{
+         "generated_at": "<ISO timestamp>",
+         "project": "<name>",
+         "version": "<version>",
+         "diataxis_sections": ["tutorial","howto","reference","explanation"],
+         "files": [{{"path","title","diataxis_type","size_chars"}}],
+         "qa_status": "<overall from QAReport>"
+       }}
+    5. Return the complete output dict as:
+       {{
+         "files": {{ "path/to/file": "content", ... }},
+         "manifest": {{ ... }}
+       }}
+  expected_output: >
+    A JSON object with two keys: "files" (dict of path→content) and "manifest" (dict).
+    This is the final deliverable consumed by the Streamlit app to build the ZIP download.
+  agent: assembler
